@@ -9,11 +9,11 @@ use std::io::Write;
 use std::path::Path;
 use std::process;
 
-use aoc_runner_internal::Day;
-use aoc_runner_internal::Part;
 use crate::credentials::CredentialsManager;
 use crate::date::AOCDate;
 use crate::project::ProjectManager;
+use aoc_runner_internal::Day;
+use aoc_runner_internal::Part;
 
 pub struct AOCApp {}
 
