@@ -6,6 +6,57 @@ use proc_macro as pm;
 use proc_macro2 as pm2;
 use quote::quote;
 use std::error;
+use syn::parse::{Error as ParseError, Parse, ParseStream, Parser};
+use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
+use syn::{LitInt, Token};
+
+mod kw {
+    use syn::custom_keyword;
+    custom_keyword!(lib);
+    custom_keyword!(year);
+}
+
+enum LibMacroArg {
+    Year {
+        type_tok: kw::year,
+        _eq_tok: Token![=],
+        value: LitInt,
+    },
+    LibRef {
+        type_tok: kw::lib,
+        _eq_tok: Token![=],
+        value: pm2::Ident,
+    },
+}
+
+impl LibMacroArg {
+    fn get_from_stream(tokens: &pm::TokenStream) -> Result<impl Iterator<Item=Self>, ParseError> {
+        let parser = Punctuated::<LibMacroArg, Token![,]>::parse_terminated;
+        return Ok(parser.parse(tokens.clone())?.into_iter());
+    }
+}
+
+impl Parse for LibMacroArg {
+    fn parse(input: ParseStream) -> Result<Self, ParseError> {
+        let lookahead = input.lookahead1();
+        if lookahead.peek(kw::year) {
+            Ok(LibMacroArg::Year {
+                type_tok: input.parse::<kw::year>()?,
+                _eq_tok: input.parse()?,
+                value: input.parse()?,
+            })
+        } else if lookahead.peek(kw::lib) {
+            Ok(LibMacroArg::LibRef {
+                type_tok: input.parse::<kw::lib>()?,
+                _eq_tok: input.parse()?,
+                value: input.parse()?,
+            })
+        } else {
+            Err(lookahead.error())
+        }
+    }
+}
 
 #[derive(Debug)]
 struct LibInfos {
@@ -14,12 +65,22 @@ struct LibInfos {
 
 #[derive(Debug)]
 enum MainInfos {
-    Ref { lib: pm2::Ident },
-    Standalone { year: u32 },
+    Ref {
+        lib: pm2::Ident,
+        #[allow(dead_code)]
+        year: Option<u32>,
+    },
+    Standalone {
+        year: u32,
+    },
 }
 
 pub fn lib_impl(input: pm::TokenStream) -> pm::TokenStream {
-    let infos = parse_lib_infos(input).expect("failed to parse lib infos");
+    let infos = parse_lib_infos(input);
+    if let Err(e) = infos {
+        return e.to_compile_error().into();
+    }
+    let infos = infos.unwrap();
 
     AOC_RUNNER.with(|map| {
         let map = map.consume().expect("failed to consume map from lib");
@@ -33,13 +94,18 @@ pub fn lib_impl(input: pm::TokenStream) -> pm::TokenStream {
 }
 
 pub fn main_impl(input: pm::TokenStream) -> pm::TokenStream {
-    let infos = parse_main_infos(input).expect("failed to parse main infos");
+    let infos = parse_main_infos(input);
+    // TODO: put this in upper function and properly wrap below?
+    if let Err(e) = infos {
+        return e.to_compile_error().into();
+    }
+    let infos = infos.unwrap();
 
     AOC_RUNNER.with(|map| {
         let map = map.consume().expect("failed to consume map from main");
 
         let expanded = match infos {
-            MainInfos::Ref { lib } => {
+            MainInfos::Ref { lib, .. } => {
                 let infos = read_infos().expect("failed to read infos from ref main");
                 body(&infos, Some(lib))
             }
@@ -217,73 +283,93 @@ fn read_infos() -> Result<DayParts, Box<dyn error::Error>> {
     DayParts::load()
 }
 
-fn parse_lib_infos(infos: pm::TokenStream) -> Result<LibInfos, ()> {
-    let tokens: Vec<_> = infos.into_iter().collect();
+fn parse_lib_infos(infos: pm::TokenStream) -> Result<LibInfos, ParseError> {
+    let args: Vec<LibMacroArg> = LibMacroArg::get_from_stream(&infos)?.collect();
 
-    if let pm::TokenTree::Ident(i) = tokens.get(0).ok_or(())? {
-        if i.to_string() != "year" {
-            return Err(());
+    let mut year = None;
+    for arg in args {
+        match arg {
+            LibMacroArg::Year {
+                type_tok, value, ..
+            } => {
+                if year.is_some() {
+                    return Err(ParseError::new(
+                        type_tok.span,
+                        "Year cannot be given multiple times!",
+                    ));
+                } else {
+                    year = Some(value.base10_parse()?);
+                }
+            }
+            LibMacroArg::LibRef {
+                type_tok, ..
+            } => {
+                return Err(ParseError::new(
+                    type_tok.span,
+                    "'lib' is only allowed in `aoc_main`!",
+                ));
+            }
         }
-    } else {
-        return Err(());
     }
-
-    if let pm::TokenTree::Punct(p) = tokens.get(1).ok_or(())? {
-        if p.as_char() != '=' {
-            return Err(());
-        }
-    } else {
-        return Err(());
+    if year.is_none() {
+        let pm2_full: pm2::TokenStream = infos.into();
+        return Err(ParseError::new(
+            pm2_full.span(),
+            "Need an argument 'year'!",
+        ));
     }
-
-    if let pm::TokenTree::Literal(l) = tokens.get(2).ok_or(())? {
-        let repr = l.to_string();
-
-        let year = repr.parse().map_err(|_| ())?;
-
-        Ok(LibInfos { year })
-    } else {
-        Err(())
-    }
+    Ok(LibInfos { year: year.unwrap() })
 }
 
-fn parse_main_infos(infos: pm::TokenStream) -> Result<MainInfos, ()> {
-    let tokens: Vec<_> = infos.into_iter().collect();
+fn parse_main_infos(infos: pm::TokenStream) -> Result<MainInfos, ParseError> {
+    let args: Vec<LibMacroArg> = LibMacroArg::get_from_stream(&infos)?.collect();
 
-    if let pm::TokenTree::Punct(p) = tokens.get(1).ok_or(())? {
-        if p.as_char() != '=' {
-            return Err(());
+    let mut year = None;
+    let mut lib_ref = None;
+    for arg in args {
+        match arg {
+            LibMacroArg::Year {
+                type_tok, value, ..
+            } => {
+                if year.is_some() {
+                    return Err(ParseError::new(
+                        type_tok.span,
+                        "Year cannot be given multiple times!",
+                    ));
+                } else {
+                    year = Some(value.base10_parse()?);
+                }
+            }
+            LibMacroArg::LibRef {
+                type_tok, value, ..
+            } => {
+                if lib_ref.is_some() {
+                    return Err(ParseError::new(
+                        type_tok.span,
+                        "Lib cannot be given multiple times!",
+                    ));
+                } else {
+                    lib_ref = Some(value);
+                }
+            }
         }
-    } else {
-        return Err(());
     }
 
-    if let pm::TokenTree::Ident(i) = tokens.get(0).ok_or(())? {
-        let ty = i.to_string();
+    if year.is_none() && lib_ref.is_none() {
+        let pm2_full: pm2::TokenStream = infos.into();
+        return Err(ParseError::new(
+            pm2_full.span(),
+            "Need an argument 'year' or 'lib'!",
+        ));
+    }
 
-        Ok(match ty.as_ref() {
-            "year" => {
-                let repr = if let pm::TokenTree::Literal(l) = tokens.get(2).ok_or(())? {
-                    l.to_string()
-                } else {
-                    return Err(());
-                };
-
-                let year = repr.parse().map_err(|_| ())?;
-                MainInfos::Standalone { year }
-            }
-            "lib" => {
-                let lib = if let pm::TokenTree::Ident(i) = tokens.get(2).ok_or(())? {
-                    pm2::Ident::new(&i.to_string(), pm2::Span::from(i.span()))
-                } else {
-                    return Err(());
-                };
-
-                MainInfos::Ref { lib }
-            }
-            _ => return Err(()),
-        })
-    } else {
-        Err(())
+    match lib_ref {
+        Some(lib_ref) => Ok(MainInfos::Ref {
+            lib: lib_ref,
+            year: year,
+        }),
+        None => Ok(MainInfos::Standalone {
+            year: year.unwrap(),
+        }),
     }
 }

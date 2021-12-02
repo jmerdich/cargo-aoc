@@ -45,7 +45,7 @@ version = "0.3.0"
 name = "aoc-runner-derive"
 version = "0.3.0"
 dependencies = [
- "aoc-runner-internal 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "aoc-runner-internal 0.1.0",
  "proc-macro2 1.0.5",
  "quote 1.0.2",
  "syn 1.0.5",
