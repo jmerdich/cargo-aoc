@@ -1,15 +1,3 @@
-/// TODO: refactor this. As of Rust 2018 Edition, extern crate is no longer required.
-extern crate aoc_runner_internal;
-extern crate chrono;
-extern crate chrono_tz;
-extern crate clap;
-/// TODO: Do we actually need to rely on reqwest ?
-/// ... Tokio is overkill for the scope of this project.
-extern crate reqwest;
-extern crate toml;
-extern crate webbrowser;
-extern crate directories;
-
 mod app;
 mod credentials;
 mod date;

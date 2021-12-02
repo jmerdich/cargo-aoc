@@ -1,9 +1,4 @@
-use aoc_runner_internal::Day;
-use aoc_runner_internal::Part;
 use clap::ArgMatches;
-use credentials::CredentialsManager;
-use date::AOCDate;
-use project::ProjectManager;
 use reqwest::header::COOKIE;
 use reqwest::Client;
 use reqwest::StatusCode;
@@ -13,6 +8,12 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::process;
+
+use aoc_runner_internal::Day;
+use aoc_runner_internal::Part;
+use crate::credentials::CredentialsManager;
+use crate::date::AOCDate;
+use crate::project::ProjectManager;
 
 pub struct AOCApp {}
 
