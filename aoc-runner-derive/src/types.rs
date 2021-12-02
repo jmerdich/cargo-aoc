@@ -1,7 +1,6 @@
 use proc_macro as pm;
 use proc_macro2 as pm2;
 use quote::quote;
-use syn;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Runner {

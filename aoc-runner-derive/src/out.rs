@@ -65,8 +65,8 @@ fn headers(map: &InnerMap, year: u32) -> pm2::TokenStream {
     let traits_impl: pm2::TokenStream = map
         .keys()
         .map(|dp| {
-            let snake = to_snakecase(&dp);
-            let camel = to_camelcase(&dp);
+            let snake = to_snakecase(dp);
+            let camel = to_camelcase(dp);
 
             quote! {
                 #[doc(hidden)]

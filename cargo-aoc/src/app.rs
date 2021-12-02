@@ -336,7 +336,7 @@ impl AOCApp {
                                     .replace(
                                         "{NAME}",
                                         if let Some(n) = &dp.name {
-                                            &n
+                                            n
                                         } else {
                                             "(default)"
                                         },
@@ -388,7 +388,7 @@ impl AOCApp {
                                         .replace(
                                             "{NAME}",
                                             if let Some(n) = &dp.name {
-                                                &n
+                                                n
                                             } else {
                                                 "(default)"
                                             },

@@ -106,10 +106,10 @@ fn main() {
     let app = AOCApp::new();
 
     match matches.subcommand() {
-        ("credentials", Some(m)) => app.execute_credentials(&m),
-        ("input", Some(m)) => app.execute_input(&m),
+        ("credentials", Some(m)) => app.execute_credentials(m),
+        ("input", Some(m)) => app.execute_input(m),
         ("bench", Some(m)) => {
-            if let Err(e) = app.execute_bench(&m) {
+            if let Err(e) = app.execute_bench(m) {
                 eprintln!("An error occurs : {}", e);
                 std::process::exit(-1);
             }
