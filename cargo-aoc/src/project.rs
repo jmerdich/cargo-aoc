@@ -1,31 +1,52 @@
 use aoc_runner_internal::DayParts;
+use camino::Utf8PathBuf;
+use cargo_metadata::{MetadataCommand, Package};
 use std::error;
-use std::fs;
 use std::process;
 
 pub struct ProjectManager {
     pub name: String,
     pub slug: String,
+    pub root_target_dir: camino::Utf8PathBuf,
+    pub crate_dir: camino::Utf8PathBuf,
 }
 
 impl ProjectManager {
     pub fn new() -> Result<ProjectManager, Box<dyn error::Error>> {
-        let cargo: toml::Value = fs::read_to_string("Cargo.toml")?.parse()?;
+        let metadata = MetadataCommand::new().exec()?;
 
-        let crate_name = cargo
-            .get("package")
-            .ok_or("no field package in Cargo.toml")?
-            .get("name")
-            .ok_or("no field package.name in Cargo.toml")?
-            .as_str()
-            .ok_or("invalid crate name")?
-            .to_string();
+        // First filter the (usually many) dependencies to just the workspace
+        // members
+        let workspace_pkgs: Vec<Package> = metadata
+            .workspace_members
+            .iter()
+            .map(|id| metadata[id].clone())
+            .collect();
 
-        let crate_slug = crate_name.replace('-', "_");
+        let mut cur_package = None;
+        assert!(!workspace_pkgs.is_empty());
+        if let Some(root_pkg) = metadata.root_package() {
+            cur_package = Some(root_pkg.clone());
+        } else {
+            let cur_dir = std::env::current_dir()?;
+            // Determine which we care about by checking which directory we're currently in
+            // and seeing if it's a subdir of where the Cargo.toml manifest is.
+            for pkg in workspace_pkgs {
+                if cur_dir.starts_with(pkg.manifest_path.parent().unwrap()) {
+                    cur_package = Some(pkg);
+                    break;
+                }
+            }
+        }
+
+        let pkg = cur_package.ok_or("Unable to determine current crate")?;
+        let crate_slug = pkg.name.replace('-', "_");
 
         Ok(ProjectManager {
-            name: crate_name,
+            name: pkg.name,
             slug: crate_slug,
+            root_target_dir: metadata.target_directory,
+            crate_dir: pkg.manifest_path.parent().unwrap().into(),
         })
     }
 
@@ -42,6 +63,13 @@ impl ProjectManager {
             .into());
         }
 
-        DayParts::load()
+        DayParts::load(self.slug.clone(), Some(self.root_target_dir.clone().into()))
+    }
+
+    pub fn input_file_for(&self, year: u32, day: aoc_runner_internal::Day) -> Utf8PathBuf {
+        self.crate_dir
+            .join("input")
+            .join(year.to_string())
+            .join(format!("day{}.txt", day.0))
     }
 }

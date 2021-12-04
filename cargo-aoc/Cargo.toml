@@ -10,8 +10,7 @@ edition = "2018"
 include = ["Cargo.toml", "src/**/*", "template/**/*.tpl", "../README.md"]
 
 [dependencies]
-#aoc-runner-internal = { path = "../aoc-runner-internal" }
-aoc-runner-internal = "0.1.0"
+aoc-runner-internal = { path = "../aoc-runner-internal", version = "0.1.0" }
 toml = "0.5.3"
 clap = "2.33.0"
 chrono = "0.4.9"
@@ -19,3 +18,5 @@ chrono-tz = "0.5.1"
 reqwest = "0.9.21"
 webbrowser = "0.5.2"
 directories = "2.0.2"
+camino = "1.0.5"
+cargo_metadata = "0.14.1"

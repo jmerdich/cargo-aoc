@@ -31,9 +31,9 @@ enum LibMacroArg {
 }
 
 impl LibMacroArg {
-    fn get_from_stream(tokens: &pm::TokenStream) -> Result<impl Iterator<Item=Self>, ParseError> {
+    fn get_from_stream(tokens: &pm::TokenStream) -> Result<impl Iterator<Item = Self>, ParseError> {
         let parser = Punctuated::<LibMacroArg, Token![,]>::parse_terminated;
-        return Ok(parser.parse(tokens.clone())?.into_iter());
+        Ok(parser.parse(tokens.clone())?.into_iter())
     }
 }
 
@@ -106,7 +106,8 @@ pub fn main_impl(input: pm::TokenStream) -> pm::TokenStream {
 
         let expanded = match infos {
             MainInfos::Ref { lib, .. } => {
-                let infos = read_infos().expect("failed to read infos from ref main");
+                let infos =
+                    read_infos(lib.to_string()).expect("failed to read infos from ref main");
                 body(&infos, Some(lib))
             }
             MainInfos::Standalone { year } => {
@@ -279,8 +280,8 @@ fn write_infos(map: &InnerMap, year: u32) -> Result<DayParts, Box<dyn error::Err
     Ok(day_parts)
 }
 
-fn read_infos() -> Result<DayParts, Box<dyn error::Error>> {
-    DayParts::load()
+fn read_infos(crate_name: String) -> Result<DayParts, Box<dyn error::Error>> {
+    DayParts::load(crate_name, None)
 }
 
 fn parse_lib_infos(infos: pm::TokenStream) -> Result<LibInfos, ParseError> {
@@ -301,9 +302,7 @@ fn parse_lib_infos(infos: pm::TokenStream) -> Result<LibInfos, ParseError> {
                     year = Some(value.base10_parse()?);
                 }
             }
-            LibMacroArg::LibRef {
-                type_tok, ..
-            } => {
+            LibMacroArg::LibRef { type_tok, .. } => {
                 return Err(ParseError::new(
                     type_tok.span,
                     "'lib' is only allowed in `aoc_main`!",
@@ -313,12 +312,11 @@ fn parse_lib_infos(infos: pm::TokenStream) -> Result<LibInfos, ParseError> {
     }
     if year.is_none() {
         let pm2_full: pm2::TokenStream = infos.into();
-        return Err(ParseError::new(
-            pm2_full.span(),
-            "Need an argument 'year'!",
-        ));
+        return Err(ParseError::new(pm2_full.span(), "Need an argument 'year'!"));
     }
-    Ok(LibInfos { year: year.unwrap() })
+    Ok(LibInfos {
+        year: year.unwrap(),
+    })
 }
 
 fn parse_main_infos(infos: pm::TokenStream) -> Result<MainInfos, ParseError> {
@@ -366,7 +364,7 @@ fn parse_main_infos(infos: pm::TokenStream) -> Result<MainInfos, ParseError> {
     match lib_ref {
         Some(lib_ref) => Ok(MainInfos::Ref {
             lib: lib_ref,
-            year: year,
+            year,
         }),
         None => Ok(MainInfos::Standalone {
             year: year.unwrap(),

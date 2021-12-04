@@ -1,3 +1,4 @@
+use camino::Utf8PathBuf;
 use clap::ArgMatches;
 use reqwest::header::COOKIE;
 use reqwest::Client;
@@ -56,6 +57,10 @@ impl AOCApp {
             date.year, date.day
         );
 
+        let download_root = ProjectManager::new()
+            .map(|pm| pm.crate_dir)
+            .unwrap_or_else(|_| "".into());
+
         // Creates an HTTP Client
         let client = Client::new();
         // Cookie formatting ...
@@ -72,7 +77,7 @@ impl AOCApp {
             Ok(mut response) => match response.status() {
                 StatusCode::OK => {
                     let filename = date.filename();
-                    let dir = date.directory();
+                    let dir = download_root.join(date.directory());
                     // Creates the file-tree to store inputs
                     // TODO: Maybe use crate's infos to get its root in the filesystem ? 
                     fs::create_dir_all(&dir).unwrap_or_else(|_| panic!("Could not create input directory: {}", dir));
@@ -158,6 +163,14 @@ impl AOCApp {
         ))
         .replace("{CRATE_NAME}", &pm.name)
         .replace(
+            "{CRATE_PATH}",
+            &pm.crate_dir
+                .clone()
+                .into_string()
+                .escape_default()
+                .to_string(),
+        )
+        .replace(
             "{PROFILE}",
             if args.is_present("profile") {
                 "[profile.release]\ndebug = true"
@@ -202,6 +215,7 @@ impl AOCApp {
         }
 
         self.download_input(day, year)?;
+        let def_input_file = pm.input_file_for(year, day);
 
         let main_content = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -211,20 +225,30 @@ impl AOCApp {
         .replace("{YEAR}", &day_parts.year.to_string())
         .replace(
             "{INPUT}",
-            &template_input(day, year, args.value_of("input")),
+            &template_input(
+                day,
+                year,
+                args.value_of("input")
+                    .unwrap_or_else(|| def_input_file.as_str()),
+            )?,
         )
         .replace("{BODY}", &body);
 
-        fs::create_dir_all("target/aoc/aoc-autobuild/src")
+        let autobuild_dir = pm.root_target_dir
+            .join("aoc")
+            .join(pm.slug)
+            .join("aoc-autobuild");
+
+        fs::create_dir_all(autobuild_dir.join("src"))
             .expect("failed to create autobuild directory");
-        fs::write("target/aoc/aoc-autobuild/Cargo.toml", &cargo_content)
+        fs::write(autobuild_dir.join("Cargo.toml"), &cargo_content)
             .expect("failed to write Cargo.toml");
-        fs::write("target/aoc/aoc-autobuild/src/main.rs", &main_content)
+        fs::write(autobuild_dir.join("src/main.rs"), &main_content)
             .expect("failed to write src/main.rs");
 
         let status = process::Command::new("cargo")
             .args(&["run", "--release"])
-            .current_dir("target/aoc/aoc-autobuild")
+            .current_dir(autobuild_dir)
             .spawn()
             .expect("Failed to run cargo")
             .wait()
@@ -258,6 +282,14 @@ impl AOCApp {
             "/template/Cargo-bench.toml.tpl"
         ))
         .replace("{CRATE_NAME}", &pm.name)
+        .replace(
+            "{CRATE_PATH}",
+            &pm.crate_dir
+                .clone()
+                .into_string()
+                .escape_default()
+                .to_string(),
+        )
         .replace(
             "{PROFILE}",
             if args.is_present("profile") {
@@ -404,6 +436,7 @@ impl AOCApp {
         };
 
         self.download_input(day, year)?;
+        let def_input_file = pm.input_file_for(year, day);
 
         let main_content = bench_tpl
             .replace("{CRATE_SLUG}", &pm.slug)
@@ -419,22 +452,32 @@ impl AOCApp {
             )
             .replace(
                 "{INPUTS}",
-                &template_input(day, year, args.value_of("input")),
+                &template_input(
+                    day,
+                    year,
+                    args.value_of("input")
+                        .unwrap_or_else(|| def_input_file.as_str()),
+                )?,
             );
 
-        fs::create_dir_all("target/aoc/aoc-autobench/benches")
+        let autobench_dir = pm.root_target_dir
+            .join("aoc")
+            .join(pm.slug)
+            .join("aoc-autobench");
+
+        fs::create_dir_all(autobench_dir.join("benches"))
             .expect("failed to create autobench directory");
-        fs::write("target/aoc/aoc-autobench/Cargo.toml", &cargo_content)
+        fs::write(autobench_dir.join("Cargo.toml"), &cargo_content)
             .expect("failed to write Cargo.toml");
         fs::write(
-            "target/aoc/aoc-autobench/benches/aoc_benchmark.rs",
+            autobench_dir.join("src/aoc_benchmark.rs"),
             &main_content,
         )
         .expect("failed to write src/aoc_benchmark.rs");
 
         let status = process::Command::new("cargo")
             .args(&["bench"])
-            .current_dir("target/aoc/aoc-autobench")
+            .current_dir(&autobench_dir)
             .spawn()
             .expect("Failed to run cargo")
             .wait()
@@ -445,33 +488,26 @@ impl AOCApp {
         }
 
         if args.is_present("open") {
-            let index = "target/aoc/aoc-autobench/target/criterion/report/index.html";
+            let index = autobench_dir.join("target/criterion/report/index.html");
 
-            if !Path::new(index).exists() {
+            if !index.exists() {
                 return Err("Report is missing, perhaps gnuplot is missing ?".into());
             }
-            webbrowser::open(index)?;
+            webbrowser::open(index.as_str())?;
         }
 
         Ok(())
     }
 }
 
-fn template_input(day: Day, year: u32, input: Option<&str>) -> String {
+fn template_input(day: Day, _year: u32, input: &str) -> Result<String, Box<dyn std::error::Error>> {
     let day = day.0.to_string();
-    let path = input
-        .map(|p| {
-            if Path::new(p).is_relative() {
-                format!("../../../../{}", p)
-            } else {
-                p.to_string()
-            }
-        })
-        .unwrap_or_else(|| format!("../../../../input/{}/day{}.txt", year, &day));
-    include_str!(concat!(
+    let path = Utf8PathBuf::from_path_buf(std::fs::canonicalize(input)?)
+        .map_err(|e| format!("Non unicode path: {}", e.display()))?;
+    Ok(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/template/input.rs.tpl"
     ))
-    .replace("{PATH}", &path)
-    .replace("{DAY}", &day)
+    .replace("{PATH}", &path.into_string().escape_default().to_string())
+    .replace("{DAY}", &day))
 }

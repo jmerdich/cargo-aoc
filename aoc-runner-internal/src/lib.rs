@@ -92,18 +92,54 @@ pub struct DayParts {
 
 impl DayParts {
     pub fn save(&self) -> Result<(), Box<dyn error::Error>> {
-        fs::create_dir_all("target/aoc")?;
-        let f = fs::File::create("target/aoc/completed.json")?;
+        let mut target_directory: std::path::PathBuf = "target".into();
+        let proc_dir_path: std::path::PathBuf = env!("PROC_OUT_DIR").into();
+        for potential_path in proc_dir_path.ancestors() {
+            // There isn't a good way to get the target root dir from a proc-macro.
+            // But a build script gets its own OUT_DIR in the target dir, so pass that
+            // so the proc-macro can see it and search upwards from there.
+            // This is a hack, but so is the whole saving-and-loading-during-build thing.
+            if potential_path.file_name() == Some("target".as_ref()) {
+                target_directory = potential_path.into();
+                break;
+            }
+        }
+        if !target_directory.join("aoc").exists() {
+            fs::create_dir(target_directory.join("aoc"))?;
+        }
+        let crate_name = std::env::var("CARGO_CRATE_NAME").expect("Cannot determine crate name");
+        let f =
+            fs::File::create(target_directory.join(format!("aoc/completed_{}.json", crate_name)))?;
+        serde_json::to_writer_pretty(f, &self)?;
+
+        // Still write to old filename, in case our versions are mismatched.
+        let f = fs::File::create(target_directory.join("aoc/completed.json"))?;
 
         serde_json::to_writer_pretty(f, &self)?;
 
         Ok(())
     }
 
-    pub fn load() -> Result<Self, Box<dyn error::Error>> {
-        let f = fs::File::open("target/aoc/completed.json")?;
+    pub fn load(
+        crate_name: String,
+        root_dir: Option<std::path::PathBuf>,
+    ) -> Result<Self, Box<dyn error::Error>> {
+        let root_dir = root_dir.unwrap_or_else(|| "target".into());
+        let mut path = root_dir
+            .join("aoc")
+            .join(format!("completed_{}.json", crate_name));
+        let mut opt_f = fs::File::open(&path);
 
-        Ok(serde_json::from_reader(f)?)
+        if let Err(err) = &opt_f {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                // If missing, get old filename, in case our versions are mismatched
+                path.pop();
+                path.push("completed.json");
+                opt_f = fs::File::open(path);
+            }
+        }
+
+        Ok(serde_json::from_reader(opt_f?)?)
     }
 }
 
