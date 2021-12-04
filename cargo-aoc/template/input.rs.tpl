@@ -1,2 +1,2 @@
 
-    let input_day{DAY} = ArcStr::from(include_str!("{PATH}"));
+    let input_day{{DAY}} = ArcStr::from(include_str!("{{PATH}}"));

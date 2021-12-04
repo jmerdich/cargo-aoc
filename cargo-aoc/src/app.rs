@@ -13,6 +13,7 @@ use std::process;
 use crate::credentials::CredentialsManager;
 use crate::date::AOCDate;
 use crate::project::ProjectManager;
+use crate::template::get_tera;
 use aoc_runner_internal::Day;
 use aoc_runner_internal::Part;
 
@@ -234,7 +235,8 @@ impl AOCApp {
         )
         .replace("{BODY}", &body);
 
-        let autobuild_dir = pm.root_target_dir
+        let autobuild_dir = pm
+            .root_target_dir
             .join("aoc")
             .join(pm.slug)
             .join("aoc-autobuild");
@@ -460,7 +462,8 @@ impl AOCApp {
                 )?,
             );
 
-        let autobench_dir = pm.root_target_dir
+        let autobench_dir = pm
+            .root_target_dir
             .join("aoc")
             .join(pm.slug)
             .join("aoc-autobench");
@@ -469,11 +472,8 @@ impl AOCApp {
             .expect("failed to create autobench directory");
         fs::write(autobench_dir.join("Cargo.toml"), &cargo_content)
             .expect("failed to write Cargo.toml");
-        fs::write(
-            autobench_dir.join("src/aoc_benchmark.rs"),
-            &main_content,
-        )
-        .expect("failed to write src/aoc_benchmark.rs");
+        fs::write(autobench_dir.join("src/aoc_benchmark.rs"), &main_content)
+            .expect("failed to write src/aoc_benchmark.rs");
 
         let status = process::Command::new("cargo")
             .args(&["bench"])
@@ -501,13 +501,13 @@ impl AOCApp {
 }
 
 fn template_input(day: Day, _year: u32, input: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let day = day.0.to_string();
     let path = Utf8PathBuf::from_path_buf(std::fs::canonicalize(input)?)
         .map_err(|e| format!("Non unicode path: {}", e.display()))?;
-    Ok(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/template/input.rs.tpl"
-    ))
-    .replace("{PATH}", &path.into_string().escape_default().to_string())
-    .replace("{DAY}", &day))
+
+    let tera = get_tera();
+    let mut ctx = tera::Context::new();
+    ctx.insert("PATH", &path);
+    ctx.insert("DAY", &day.0);
+
+    tera.render("input.rs.tpl", &ctx).map_err(|e| e.into())
 }

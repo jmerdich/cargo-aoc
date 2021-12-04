@@ -2,6 +2,7 @@ mod app;
 mod credentials;
 mod date;
 mod project;
+mod template;
 
 use clap::{App, Arg, SubCommand};
 
