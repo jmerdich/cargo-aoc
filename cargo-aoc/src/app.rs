@@ -472,8 +472,11 @@ impl AOCApp {
             .expect("failed to create autobench directory");
         fs::write(autobench_dir.join("Cargo.toml"), &cargo_content)
             .expect("failed to write Cargo.toml");
-        fs::write(autobench_dir.join("src/aoc_benchmark.rs"), &main_content)
-            .expect("failed to write src/aoc_benchmark.rs");
+        fs::write(
+            autobench_dir.join("benches/aoc_benchmark.rs"),
+            &main_content,
+        )
+        .expect("failed to write benches/aoc_benchmark.rs");
 
         let status = process::Command::new("cargo")
             .args(&["bench"])
